@@ -33,7 +33,7 @@ def _load_api_key():
 
 API_KEY      = _load_api_key()
 REFRESH_SECS = 10
-WIN_W, WIN_H = 240, 260
+WIN_W, WIN_H = 240, 290
 CORNER_R     = 14
 
 # macOS-style dark palette
@@ -138,9 +138,11 @@ class ClaudeWidget(Gtk.Window):
         self.set_app_paintable(True)
 
         # Data
-        self.data   = {}
-        self.error  = 'Loading…'
-        self.status = ''
+        self.data         = {}
+        self.error        = 'Loading…'
+        self.status       = ''
+        self.session_used = 0       # tokens consumed since widget started
+        self.prev_rem     = None    # tok_rem from last successful poll
         # Connect drag/click events to the DrawingArea — it fills the window
         # and absorbs pointer events before they reach the Window.
         area = Gtk.DrawingArea()
@@ -203,6 +205,17 @@ class ClaudeWidget(Gtk.Window):
             GLib.idle_add(self._apply, None, str(exc)[:50])
 
     def _apply(self, data, error):
+        if data:
+            curr = data.get('tok_rem', 0)
+            lim  = data.get('tok_lim', 0)
+            if self.prev_rem is not None:
+                if curr < self.prev_rem:
+                    # Tokens consumed this interval
+                    self.session_used += self.prev_rem - curr
+                elif curr > self.prev_rem + 500:
+                    # Rate-limit window reset; count new-window consumption so far
+                    self.session_used += max(0, lim - curr)
+            self.prev_rem = curr
         self.data   = data or {}
         self.error  = error
         self.status = datetime.now().strftime('%H:%M:%S')
@@ -234,21 +247,25 @@ class ClaudeWidget(Gtk.Window):
             return
 
         d = self.data
-        tok_pct = d.get('tok_rem', 0) / max(d.get('tok_lim', 1), 1)
+        tok_rem = d.get('tok_rem', 0)
+        tok_lim = d.get('tok_lim', 1)
         req_pct = d.get('req_rem', 0) / max(d.get('req_lim', 1), 1)
 
-        # Main token donut
-        donut_r = 54
+        # Donut shows current-window USED fraction (fills as you consume)
+        tok_used_pct = (tok_lim - tok_rem) / max(tok_lim, 1)
+        tok_rem_pct  = tok_rem / max(tok_lim, 1)
+        donut_r  = 54
         donut_cx = cx
         donut_cy = 108
-        ring_w = 11
-        tok_col = GREEN if tok_pct > 0.5 else (ORANGE if tok_pct > 0.2 else RED)
-        _donut(cr, donut_cx, donut_cy, donut_r, donut_r - ring_w, tok_pct, tok_col, CARD)
+        ring_w   = 11
+        tok_col  = GREEN if tok_rem_pct > 0.5 else (ORANGE if tok_rem_pct > 0.2 else RED)
+        _donut(cr, donut_cx, donut_cy, donut_r, donut_r - ring_w, tok_used_pct, tok_col, CARD)
 
-        # Percentage inside donut
-        pct_str = f'{tok_pct * 100:.0f}%'
-        _text_center(cr, pct_str, donut_cx, donut_cy + 9, 20, tok_col, bold=True)
-        _text_center(cr, 'TOKENS', donut_cx, donut_cy + 24, 8, TEXT2)
+        # Window used count inside donut
+        used_win = tok_lim - tok_rem
+        used_str = f'{used_win:,}' if used_win < 10000 else f'{used_win // 1000}k'
+        _text_center(cr, used_str, donut_cx, donut_cy + 9, 18, tok_col, bold=True)
+        _text_center(cr, 'USED', donut_cx, donut_cy + 24, 8, TEXT2)
 
         # Separator
         _set(cr, SEP)
@@ -273,14 +290,25 @@ class ClaudeWidget(Gtk.Window):
             cr.show_text(val)
             _pill_bar(cr, pad, y + 4, w - pad * 2, 5, pct, col, CARD)
 
-        stat_row('Tokens', d.get('tok_rem', 0), d.get('tok_lim', 0), tok_pct, tok_col, row_y)
-        stat_row('Requests', d.get('req_rem', 0), d.get('req_lim', 0), req_pct, BLUE, row_y + 32)
+        stat_row('Tokens rem', tok_rem, tok_lim, tok_rem_pct, tok_col, row_y)
+        stat_row('Requests',   d.get('req_rem', 0), d.get('req_lim', 0), req_pct, BLUE, row_y + 32)
 
-        # Reset info
-        reset = d.get('reset', '')
-        if reset:
-            reset_lbl = 'Resets ' + reset[11:19] if len(reset) > 19 else reset
-            _text_center(cr, reset_lbl, cx, row_y + 70, 8, TEXT2)
+        # Session total separator
+        _set(cr, SEP)
+        cr.set_line_width(1)
+        cr.move_to(16, row_y + 52)
+        cr.line_to(w - 16, row_y + 52)
+        cr.stroke()
+
+        # Session used row
+        sess_str = f'{self.session_used:,}'
+        _text_left(cr, 'Session', pad, row_y + 68, 9, TEXT2)
+        cr.set_font_size(9)
+        cr.select_font_face('Ubuntu Mono', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+        ext = cr.text_extents(sess_str)
+        _set(cr, TEXT)
+        cr.move_to(w - pad - ext.width - ext.x_bearing, row_y + 68)
+        cr.show_text(sess_str)
 
         # Timestamp
         _text_center(cr, f'↻  {self.status}', cx, h - 12, 8, TEXT2)
