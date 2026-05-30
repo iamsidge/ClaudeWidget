@@ -17,7 +17,21 @@ import math
 import cairo
 from datetime import datetime
 
-API_KEY      = os.environ.get('ANTHROPIC_API_KEY', '')
+_KEY_FILE = os.path.expanduser('~/.config/claude-widget/api_key')
+
+def _load_api_key():
+    # 1. env var wins
+    k = os.environ.get('ANTHROPIC_API_KEY', '').strip()
+    if k:
+        return k
+    # 2. fall back to local config file (never committed to git)
+    try:
+        with open(_KEY_FILE) as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return ''
+
+API_KEY      = _load_api_key()
 REFRESH_SECS = 60
 WIN_W, WIN_H = 240, 260
 CORNER_R     = 14
@@ -161,7 +175,7 @@ class ClaudeWidget(Gtk.Window):
 
     def _fetch(self):
         if not API_KEY:
-            GLib.idle_add(self._apply, None, 'Set ANTHROPIC_API_KEY env var')
+            GLib.idle_add(self._apply, None, f'Add key to\n{_KEY_FILE}')
             return
         try:
             payload = json.dumps({
