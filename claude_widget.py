@@ -137,24 +137,24 @@ class ClaudeWidget(Gtk.Window):
             self.set_visual(visual)
         self.set_app_paintable(True)
 
-        # Drag state
-        self._drag = None
-        self.connect('button-press-event',   self._on_press)
-        self.connect('motion-notify-event',  self._on_motion)
-        self.connect('button-release-event', lambda *_: setattr(self, '_drag', None))
-        self.add_events(
-            Gdk.EventMask.BUTTON_PRESS_MASK |
-            Gdk.EventMask.BUTTON1_MOTION_MASK |
-            Gdk.EventMask.BUTTON_RELEASE_MASK
-        )
-
         # Data
         self.data   = {}
         self.error  = 'Loading…'
         self.status = ''
+        self._drag  = None
 
+        # Connect drag events to the DrawingArea — it sits on top and
+        # absorbs pointer events before they reach the Window.
         area = Gtk.DrawingArea()
         area.connect('draw', self._draw)
+        area.add_events(
+            Gdk.EventMask.BUTTON_PRESS_MASK |
+            Gdk.EventMask.BUTTON1_MOTION_MASK |
+            Gdk.EventMask.BUTTON_RELEASE_MASK
+        )
+        area.connect('button-press-event',   self._on_press)
+        area.connect('motion-notify-event',  self._on_motion)
+        area.connect('button-release-event', lambda *_: setattr(self, '_drag', None))
         self.add(area)
 
         # Realize before positioning so move() takes effect
