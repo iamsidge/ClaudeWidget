@@ -17,21 +17,33 @@ import math
 import cairo
 from datetime import datetime
 
-_KEY_FILE = os.path.expanduser('~/.config/claude-widget/api_key')
+_KEY_FILE   = os.path.expanduser('~/.config/claude-widget/api_key')
+_CREDS_FILE = os.path.expanduser('~/.claude/.credentials.json')
 
-def _load_api_key():
-    # 1. env var wins
+def _load_auth():
+    """Return (token, is_oauth).  OAuth token → Bearer header; API key → x-api-key."""
+    # 1. Claude Code OAuth credentials (same bucket Claude Code uses)
+    try:
+        import json as _json
+        with open(_CREDS_FILE) as f:
+            creds = _json.load(f)
+        token = creds.get('claudeAiOauth', {}).get('accessToken', '').strip()
+        if token:
+            return token, True
+    except Exception:
+        pass
+    # 2. Explicit env var
     k = os.environ.get('ANTHROPIC_API_KEY', '').strip()
     if k:
-        return k
-    # 2. fall back to local config file (never committed to git)
+        return k, False
+    # 3. Local config file
     try:
         with open(_KEY_FILE) as f:
-            return f.read().strip()
+            return f.read().strip(), False
     except FileNotFoundError:
-        return ''
+        return '', False
 
-API_KEY      = _load_api_key()
+API_KEY, IS_OAUTH = _load_auth()
 REFRESH_SECS = 10
 WIN_W, WIN_H = 240, 290
 CORNER_R     = 14
@@ -173,49 +185,45 @@ class ClaudeWidget(Gtk.Window):
 
     def _fetch(self):
         if not API_KEY:
-            GLib.idle_add(self._apply, None, f'Set ANTHROPIC_API_KEY or add key to {_KEY_FILE}')
+            GLib.idle_add(self._apply, None, f'No key found. Add to {_KEY_FILE}')
             return
         try:
             payload = json.dumps({
-                'model':      'claude-sonnet-4-6',
+                'model':      'claude-haiku-4-5-20251001',
                 'max_tokens': 1,
                 'messages':   [{'role': 'user', 'content': '.'}],
             }).encode()
+            auth_headers = (
+                {'Authorization': f'Bearer {API_KEY}'}
+                if IS_OAUTH else
+                {'x-api-key': API_KEY}
+            )
             req = urllib.request.Request(
                 'https://api.anthropic.com/v1/messages',
                 data=payload,
                 headers={
-                    'x-api-key':         API_KEY,
+                    **auth_headers,
                     'anthropic-version': '2023-06-01',
                     'content-type':      'application/json',
                 },
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 h = resp.headers
+                def _f(k): return float(h.get(k) or 0)
                 def _i(k): return int(h.get(k) or 0)
                 data = {
-                    'tok_lim':  _i('anthropic-ratelimit-tokens-limit'),
-                    'tok_rem':  _i('anthropic-ratelimit-tokens-remaining'),
-                    'req_lim':  _i('anthropic-ratelimit-requests-limit'),
-                    'req_rem':  _i('anthropic-ratelimit-requests-remaining'),
-                    'reset':     h.get('anthropic-ratelimit-tokens-reset', ''),
+                    'util_5h':    _f('anthropic-ratelimit-unified-5h-utilization'),
+                    'util_7d':    _f('anthropic-ratelimit-unified-7d-utilization'),
+                    'reset_5h':   _i('anthropic-ratelimit-unified-5h-reset'),
+                    'reset_7d':   _i('anthropic-ratelimit-unified-7d-reset'),
+                    'status':      h.get('anthropic-ratelimit-unified-status', ''),
+                    'claim':       h.get('anthropic-ratelimit-unified-representative-claim', ''),
                 }
             GLib.idle_add(self._apply, data, None)
         except Exception as exc:
             GLib.idle_add(self._apply, None, str(exc)[:50])
 
     def _apply(self, data, error):
-        if data:
-            curr = data.get('tok_rem', 0)
-            lim  = data.get('tok_lim', 0)
-            if self.prev_rem is not None:
-                if curr < self.prev_rem:
-                    # Tokens consumed this interval
-                    self.session_used += self.prev_rem - curr
-                elif curr > self.prev_rem + 500:
-                    # Rate-limit window reset; count new-window consumption so far
-                    self.session_used += max(0, lim - curr)
-            self.prev_rem = curr
         self.data   = data or {}
         self.error  = error
         self.status = datetime.now().strftime('%H:%M:%S')
@@ -247,25 +255,21 @@ class ClaudeWidget(Gtk.Window):
             return
 
         d = self.data
-        tok_rem = d.get('tok_rem', 0)
-        tok_lim = d.get('tok_lim', 1)
-        req_pct = d.get('req_rem', 0) / max(d.get('req_lim', 1), 1)
+        util_5h = d.get('util_5h', 0.0)
+        util_7d = d.get('util_7d', 0.0)
+        status  = d.get('status', '')
 
-        # Donut shows current-window USED fraction (fills as you consume)
-        tok_used_pct = (tok_lim - tok_rem) / max(tok_lim, 1)
-        tok_rem_pct  = tok_rem / max(tok_lim, 1)
+        # Colour based on 5h utilisation
+        col_5h = GREEN if util_5h < 0.5 else (ORANGE if util_5h < 0.8 else RED)
+
+        # Main donut — 5-hour budget used
         donut_r  = 54
         donut_cx = cx
-        donut_cy = 108
+        donut_cy = 105
         ring_w   = 11
-        tok_col  = GREEN if tok_rem_pct > 0.5 else (ORANGE if tok_rem_pct > 0.2 else RED)
-        _donut(cr, donut_cx, donut_cy, donut_r, donut_r - ring_w, tok_used_pct, tok_col, CARD)
-
-        # Window used count inside donut
-        used_win = tok_lim - tok_rem
-        used_str = f'{used_win:,}' if used_win < 10000 else f'{used_win // 1000}k'
-        _text_center(cr, used_str, donut_cx, donut_cy + 9, 18, tok_col, bold=True)
-        _text_center(cr, 'USED', donut_cx, donut_cy + 24, 8, TEXT2)
+        _donut(cr, donut_cx, donut_cy, donut_r, donut_r - ring_w, util_5h, col_5h, CARD)
+        _text_center(cr, f'{util_5h * 100:.0f}%', donut_cx, donut_cy + 9, 20, col_5h, bold=True)
+        _text_center(cr, '5H BUDGET', donut_cx, donut_cy + 24, 8, TEXT2)
 
         # Separator
         _set(cr, SEP)
@@ -275,40 +279,35 @@ class ClaudeWidget(Gtk.Window):
         cr.line_to(w - 16, y_sep)
         cr.stroke()
 
-        # Stats rows
-        pad = 20
-        row_y = y_sep + 20
+        pad   = 20
+        row_y = y_sep + 18
 
-        def stat_row(label, rem, lim, pct, col, y):
+        def util_row(label, pct, col, y):
             _text_left(cr, label, pad, y, 9, TEXT2)
-            val = f'{rem:,} / {lim:,}'
+            val = f'{pct * 100:.1f}%'
             cr.set_font_size(9)
-            cr.select_font_face('Ubuntu Mono', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+            cr.select_font_face('Ubuntu Mono', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
             ext = cr.text_extents(val)
-            _set(cr, TEXT)
+            _set(cr, col)
             cr.move_to(w - pad - ext.width - ext.x_bearing, y)
             cr.show_text(val)
             _pill_bar(cr, pad, y + 4, w - pad * 2, 5, pct, col, CARD)
 
-        stat_row('Tokens rem', tok_rem, tok_lim, tok_rem_pct, tok_col, row_y)
-        stat_row('Requests',   d.get('req_rem', 0), d.get('req_lim', 0), req_pct, BLUE, row_y + 32)
+        col_7d = GREEN if util_7d < 0.5 else (ORANGE if util_7d < 0.8 else RED)
+        util_row('5h used',  util_5h, col_5h, row_y)
+        util_row('7d used',  util_7d, col_7d, row_y + 28)
 
-        # Session total separator
-        _set(cr, SEP)
-        cr.set_line_width(1)
-        cr.move_to(16, row_y + 52)
-        cr.line_to(w - 16, row_y + 52)
-        cr.stroke()
+        # Reset time for 5h window
+        reset_5h = d.get('reset_5h', 0)
+        if reset_5h:
+            from datetime import timezone
+            reset_dt = datetime.fromtimestamp(reset_5h, tz=timezone.utc).astimezone()
+            reset_lbl = '5h resets ' + reset_dt.strftime('%H:%M')
+            _text_center(cr, reset_lbl, cx, row_y + 52, 8, TEXT2)
 
-        # Session used row
-        sess_str = f'{self.session_used:,}'
-        _text_left(cr, 'Session', pad, row_y + 68, 9, TEXT2)
-        cr.set_font_size(9)
-        cr.select_font_face('Ubuntu Mono', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
-        ext = cr.text_extents(sess_str)
-        _set(cr, TEXT)
-        cr.move_to(w - pad - ext.width - ext.x_bearing, row_y + 68)
-        cr.show_text(sess_str)
+        # Status badge
+        if status and status != 'allowed':
+            _text_center(cr, status.upper(), cx, row_y + 66, 8, RED)
 
         # Timestamp
         _text_center(cr, f'↻  {self.status}', cx, h - 12, 8, TEXT2)
