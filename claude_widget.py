@@ -261,29 +261,20 @@ class ClaudeWidget(Gtk.Window):
         col_5h = GREEN if util_5h < 0.5 else (ORANGE if util_5h < 0.8 else RED)
         col_7d = GREEN if util_7d < 0.5 else (ORANGE if util_7d < 0.8 else RED)
 
-        # Small donut — left column
-        d_cx, d_cy = 48, 66
-        outer_r, inner_r = 38, 30
-        _donut(cr, d_cx, d_cy, outer_r, inner_r, util_5h, col_5h, CARD)
-        _text_center(cr, f'{util_5h * 100:.0f}%', d_cx, d_cy + 8,  18, col_5h, bold=True)
-        _text_center(cr, '5H',                     d_cx, d_cy + 22, 11, TEXT2)
-
-        # Right column — bars
-        bx = 98
-        bw = w - bx - 12
+        pad = 16
 
         def util_row(label, pct, col, y):
-            _text_left(cr, label, bx, y, 13, TEXT2)
+            _text_left(cr, label, pad, y, 13, TEXT2)
             val = f'{pct * 100:.1f}%'
             cr.set_font_size(13)
             cr.select_font_face('Ubuntu Mono', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
             ext = cr.text_extents(val)
             _set(cr, col)
-            cr.move_to(w - 12 - ext.width - ext.x_bearing, y)
+            cr.move_to(w - pad - ext.width - ext.x_bearing, y)
             cr.show_text(val)
-            _pill_bar(cr, bx, y + 4, bw, 5, pct, col, CARD)
+            _pill_bar(cr, pad, y + 4, w - pad * 2, 5, pct, col, CARD)
 
-        util_row('5h used', util_5h, col_5h, 40)
+        util_row('5h used', util_5h, col_5h, 42)
         util_row('7d used', util_7d, col_7d, 68)
 
         # Footer — reset time + timestamp, full width
