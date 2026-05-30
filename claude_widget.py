@@ -156,13 +156,14 @@ class ClaudeWidget(Gtk.Window):
         area = Gtk.DrawingArea()
         area.connect('draw', self._draw)
         self.add(area)
-        self.show_all()
 
-        # Place bottom-right of primary monitor
+        # Realize before positioning so move() takes effect
+        self.realize()
         display = Gdk.Display.get_default()
         monitor = display.get_primary_monitor() or display.get_monitor(0)
         geo = monitor.get_geometry()
         self.move(geo.x + geo.width - WIN_W - 20, geo.y + geo.height - WIN_H - 60)
+        self.show_all()
 
         threading.Thread(target=self._fetch, daemon=True).start()
         GLib.timeout_add_seconds(REFRESH_SECS, self._schedule_fetch)
@@ -175,7 +176,7 @@ class ClaudeWidget(Gtk.Window):
 
     def _fetch(self):
         if not API_KEY:
-            GLib.idle_add(self._apply, None, f'Add key to\n{_KEY_FILE}')
+            GLib.idle_add(self._apply, None, f'Set ANTHROPIC_API_KEY or add key to {_KEY_FILE}')
             return
         try:
             payload = json.dumps({

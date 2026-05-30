@@ -9,4 +9,4 @@
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-exec python3 "$SCRIPT_DIR/claude_widget.py"
+exec GDK_BACKEND=x11 python3 "$SCRIPT_DIR/claude_widget.py"
