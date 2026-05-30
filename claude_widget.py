@@ -32,7 +32,7 @@ def _load_api_key():
         return ''
 
 API_KEY      = _load_api_key()
-REFRESH_SECS = 60
+REFRESH_SECS = 10
 WIN_W, WIN_H = 240, 260
 CORNER_R     = 14
 
@@ -289,8 +289,10 @@ class ClaudeWidget(Gtk.Window):
 
     def _on_press(self, _widget, event):
         if event.button == 1:
-            # Let the WM handle the drag — works on X11 and XWayland
             self.begin_move_drag(event.button, int(event.x_root), int(event.y_root), event.time)
+        elif event.button == 2:
+            # Middle-click: force immediate refresh
+            threading.Thread(target=self._fetch, daemon=True).start()
         elif event.button == 3:
             Gtk.main_quit()
 
