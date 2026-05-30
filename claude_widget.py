@@ -45,7 +45,7 @@ def _load_auth():
 
 API_KEY, IS_OAUTH = _load_auth()
 REFRESH_SECS = 10
-WIN_W, WIN_H = 260, 310
+WIN_W, WIN_H = 280, 120
 CORNER_R     = 14
 
 # macOS-style dark palette
@@ -158,6 +158,7 @@ class ClaudeWidget(Gtk.Window):
         # Connect drag/click events to the DrawingArea — it fills the window
         # and absorbs pointer events before they reach the Window.
         area = Gtk.DrawingArea()
+        area.set_size_request(WIN_W, WIN_H)
         area.connect('draw', self._draw)
         area.add_events(
             Gdk.EventMask.BUTTON_PRESS_MASK |
@@ -238,20 +239,18 @@ class ClaudeWidget(Gtk.Window):
 
         cr.set_operator(cairo.OPERATOR_SOURCE)
 
-        # Window background
         _set(cr, BG)
         _rounded_rect(cr, 0, 0, w, h, CORNER_R)
         cr.fill()
 
         cr.set_operator(cairo.OPERATOR_OVER)
 
-        # Title
-        _text_center(cr, 'CLAUDE TOKENS', cx, 28, 12, TEXT2, bold=True)
+        _text_center(cr, 'CLAUDE TOKENS', cx, 20, 14, TEXT2, bold=True)
 
         if self.error:
             col = RED if 'API_KEY' not in self.error else ORANGE
             _text_center(cr, self.error, cx, h // 2 + 6, 11, col)
-            _text_center(cr, self.status, cx, h - 14, 10, TEXT2)
+            _text_center(cr, self.status, cx, h - 6, 10, TEXT2)
             return
 
         d = self.data
@@ -259,33 +258,15 @@ class ClaudeWidget(Gtk.Window):
         util_7d = d.get('util_7d', 0.0)
         status  = d.get('status', '')
 
-        # Colour based on 5h utilisation
         col_5h = GREEN if util_5h < 0.5 else (ORANGE if util_5h < 0.8 else RED)
+        col_7d = GREEN if util_7d < 0.5 else (ORANGE if util_7d < 0.8 else RED)
 
-        # Main donut — 5-hour budget used
-        donut_r  = 54
-        donut_cx = cx
-        donut_cy = 105
-        ring_w   = 11
-        _donut(cr, donut_cx, donut_cy, donut_r, donut_r - ring_w, util_5h, col_5h, CARD)
-        _text_center(cr, f'{util_5h * 100:.0f}%', donut_cx, donut_cy + 10, 22, col_5h, bold=True)
-        _text_center(cr, '5H BUDGET', donut_cx, donut_cy + 26, 11, TEXT2)
-
-        # Separator
-        _set(cr, SEP)
-        cr.set_line_width(1)
-        y_sep = donut_cy + donut_r + 14
-        cr.move_to(16, y_sep)
-        cr.line_to(w - 16, y_sep)
-        cr.stroke()
-
-        pad   = 20
-        row_y = y_sep + 18
+        pad = 16
 
         def util_row(label, pct, col, y):
-            _text_left(cr, label, pad, y, 11, TEXT2)
+            _text_left(cr, label, pad, y, 13, TEXT2)
             val = f'{pct * 100:.1f}%'
-            cr.set_font_size(11)
+            cr.set_font_size(13)
             cr.select_font_face('Ubuntu Mono', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
             ext = cr.text_extents(val)
             _set(cr, col)
@@ -293,24 +274,22 @@ class ClaudeWidget(Gtk.Window):
             cr.show_text(val)
             _pill_bar(cr, pad, y + 4, w - pad * 2, 5, pct, col, CARD)
 
-        col_7d = GREEN if util_7d < 0.5 else (ORANGE if util_7d < 0.8 else RED)
-        util_row('5h used',  util_5h, col_5h, row_y)
-        util_row('7d used',  util_7d, col_7d, row_y + 28)
+        util_row('5h used', util_5h, col_5h, 42)
+        util_row('7d used', util_7d, col_7d, 68)
 
-        # Reset time for 5h window
+        # Reset time + timestamp on one line
         reset_5h = d.get('reset_5h', 0)
+        footer_parts = []
         if reset_5h:
             from datetime import timezone
             reset_dt = datetime.fromtimestamp(reset_5h, tz=timezone.utc).astimezone()
-            reset_lbl = '5h resets ' + reset_dt.strftime('%H:%M')
-            _text_center(cr, reset_lbl, cx, row_y + 56, 10, TEXT2)
-
-        # Status badge
+            footer_parts.append('resets ' + reset_dt.strftime('%H:%M'))
+        if self.status:
+            footer_parts.append('↻ ' + self.status)
         if status and status != 'allowed':
-            _text_center(cr, status.upper(), cx, row_y + 72, 10, RED)
-
-        # Timestamp
-        _text_center(cr, f'↻  {self.status}', cx, h - 12, 10, TEXT2)
+            _text_center(cr, status.upper(), cx, h - 6, 12, RED)
+        else:
+            _text_center(cr, '  •  '.join(footer_parts), cx, h - 6, 12, TEXT2)
 
     # ── Input ─────────────────────────────────────────────────────────────────
 
