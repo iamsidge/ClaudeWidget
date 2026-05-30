@@ -45,7 +45,7 @@ def _load_auth():
 
 API_KEY, IS_OAUTH = _load_auth()
 REFRESH_SECS = 10
-WIN_W, WIN_H = 240, 290
+WIN_W, WIN_H = 260, 310
 CORNER_R     = 14
 
 # macOS-style dark palette
@@ -246,12 +246,12 @@ class ClaudeWidget(Gtk.Window):
         cr.set_operator(cairo.OPERATOR_OVER)
 
         # Title
-        _text_center(cr, 'CLAUDE TOKENS', cx, 26, 10, TEXT2, bold=True)
+        _text_center(cr, 'CLAUDE TOKENS', cx, 28, 12, TEXT2, bold=True)
 
         if self.error:
             col = RED if 'API_KEY' not in self.error else ORANGE
-            _text_center(cr, self.error, cx, h // 2 + 6, 9, col)
-            _text_center(cr, self.status, cx, h - 14, 8, TEXT2)
+            _text_center(cr, self.error, cx, h // 2 + 6, 11, col)
+            _text_center(cr, self.status, cx, h - 14, 10, TEXT2)
             return
 
         d = self.data
@@ -268,8 +268,8 @@ class ClaudeWidget(Gtk.Window):
         donut_cy = 105
         ring_w   = 11
         _donut(cr, donut_cx, donut_cy, donut_r, donut_r - ring_w, util_5h, col_5h, CARD)
-        _text_center(cr, f'{util_5h * 100:.0f}%', donut_cx, donut_cy + 9, 20, col_5h, bold=True)
-        _text_center(cr, '5H BUDGET', donut_cx, donut_cy + 24, 8, TEXT2)
+        _text_center(cr, f'{util_5h * 100:.0f}%', donut_cx, donut_cy + 10, 22, col_5h, bold=True)
+        _text_center(cr, '5H BUDGET', donut_cx, donut_cy + 26, 11, TEXT2)
 
         # Separator
         _set(cr, SEP)
@@ -283,9 +283,9 @@ class ClaudeWidget(Gtk.Window):
         row_y = y_sep + 18
 
         def util_row(label, pct, col, y):
-            _text_left(cr, label, pad, y, 9, TEXT2)
+            _text_left(cr, label, pad, y, 11, TEXT2)
             val = f'{pct * 100:.1f}%'
-            cr.set_font_size(9)
+            cr.set_font_size(11)
             cr.select_font_face('Ubuntu Mono', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
             ext = cr.text_extents(val)
             _set(cr, col)
@@ -303,14 +303,14 @@ class ClaudeWidget(Gtk.Window):
             from datetime import timezone
             reset_dt = datetime.fromtimestamp(reset_5h, tz=timezone.utc).astimezone()
             reset_lbl = '5h resets ' + reset_dt.strftime('%H:%M')
-            _text_center(cr, reset_lbl, cx, row_y + 52, 8, TEXT2)
+            _text_center(cr, reset_lbl, cx, row_y + 56, 10, TEXT2)
 
         # Status badge
         if status and status != 'allowed':
-            _text_center(cr, status.upper(), cx, row_y + 66, 8, RED)
+            _text_center(cr, status.upper(), cx, row_y + 72, 10, RED)
 
         # Timestamp
-        _text_center(cr, f'↻  {self.status}', cx, h - 12, 8, TEXT2)
+        _text_center(cr, f'↻  {self.status}', cx, h - 12, 10, TEXT2)
 
     # ── Input ─────────────────────────────────────────────────────────────────
 
