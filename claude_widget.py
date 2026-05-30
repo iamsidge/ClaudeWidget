@@ -141,20 +141,15 @@ class ClaudeWidget(Gtk.Window):
         self.data   = {}
         self.error  = 'Loading…'
         self.status = ''
-        self._drag  = None
-
-        # Connect drag events to the DrawingArea — it sits on top and
-        # absorbs pointer events before they reach the Window.
+        # Connect drag/click events to the DrawingArea — it fills the window
+        # and absorbs pointer events before they reach the Window.
         area = Gtk.DrawingArea()
         area.connect('draw', self._draw)
         area.add_events(
             Gdk.EventMask.BUTTON_PRESS_MASK |
-            Gdk.EventMask.BUTTON1_MOTION_MASK |
             Gdk.EventMask.BUTTON_RELEASE_MASK
         )
-        area.connect('button-press-event',   self._on_press)
-        area.connect('motion-notify-event',  self._on_motion)
-        area.connect('button-release-event', lambda *_: setattr(self, '_drag', None))
+        area.connect('button-press-event', self._on_press)
         self.add(area)
 
         # Realize before positioning so move() takes effect
@@ -294,15 +289,10 @@ class ClaudeWidget(Gtk.Window):
 
     def _on_press(self, _widget, event):
         if event.button == 1:
-            wx, wy = self.get_position()
-            self._drag = (int(event.x_root), int(event.y_root), wx, wy)
+            # Let the WM handle the drag — works on X11 and XWayland
+            self.begin_move_drag(event.button, int(event.x_root), int(event.y_root), event.time)
         elif event.button == 3:
             Gtk.main_quit()
-
-    def _on_motion(self, _widget, event):
-        if self._drag:
-            ox, oy, wx, wy = self._drag
-            self.move(wx + int(event.x_root) - ox, wy + int(event.y_root) - oy)
 
 
 if __name__ == '__main__':
