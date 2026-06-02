@@ -19,6 +19,7 @@ REFRESH_SECS = 10
 
 
 def _load_auth():
+    # 1. Claude Code credentials file (Linux / older versions)
     try:
         with open(_CREDS_FILE) as f:
             creds = json.load(f)
@@ -27,9 +28,24 @@ def _load_auth():
             return token, True
     except Exception:
         pass
+    # 2. macOS Keychain (where claude CLI stores credentials on Mac)
+    try:
+        import subprocess
+        raw = subprocess.check_output(
+            ['security', 'find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+        creds = json.loads(raw)
+        token = creds.get('claudeAiOauth', {}).get('accessToken', '').strip()
+        if token:
+            return token, True
+    except Exception:
+        pass
+    # 3. Explicit env var
     k = os.environ.get('ANTHROPIC_API_KEY', '').strip()
     if k:
         return k, False
+    # 4. Local config file
     try:
         with open(_KEY_FILE) as f:
             return f.read().strip(), False
