@@ -43,7 +43,6 @@ def _load_auth():
     except FileNotFoundError:
         return '', False
 
-API_KEY, IS_OAUTH = _load_auth()
 REFRESH_SECS = 10
 WIN_W, WIN_H = 280, 120
 CORNER_R     = 14
@@ -185,7 +184,8 @@ class ClaudeWidget(Gtk.Window):
         return True
 
     def _fetch(self):
-        if not API_KEY:
+        api_key, is_oauth = _load_auth()
+        if not api_key:
             GLib.idle_add(self._apply, None, f'No key found. Add to {_KEY_FILE}')
             return
         try:
@@ -195,9 +195,9 @@ class ClaudeWidget(Gtk.Window):
                 'messages':   [{'role': 'user', 'content': '.'}],
             }).encode()
             auth_headers = (
-                {'Authorization': f'Bearer {API_KEY}'}
-                if IS_OAUTH else
-                {'x-api-key': API_KEY}
+                {'Authorization': f'Bearer {api_key}'}
+                if is_oauth else
+                {'x-api-key': api_key}
             )
             req = urllib.request.Request(
                 'https://api.anthropic.com/v1/messages',
